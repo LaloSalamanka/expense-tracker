@@ -199,7 +199,11 @@ function getReportData(year, month) {
   // Bills with billingMonth = prev month → paid THIS month
   const billsDueThisMonth = allData.filter(e => e.billingMonth === prevMonthStr);
   let thisMonthCardTotal = 0;
-  billsDueThisMonth.forEach(e => { thisMonthCardTotal += e.amount; });
+  const thisMonthByCard = {};
+  billsDueThisMonth.forEach(e => {
+    thisMonthCardTotal += e.amount;
+    thisMonthByCard[e.cardId] = (thisMonthByCard[e.cardId] || 0) + e.amount;
+  });
 
   // Cash this month & extra income
   let cashSpend = 0;
@@ -220,8 +224,8 @@ function getReportData(year, month) {
   return {
     monthStr, netIncome, monthExpenses, cashSpend, monthExtraIncome,
     nextMonthCardTotal, nextMonthByCard,
-    thisMonthCardTotal, byCard, estimatedSavings,
-    billsDueNextMonth,
+    thisMonthCardTotal, thisMonthByCard, byCard, estimatedSavings,
+    billsDueNextMonth, billsDueThisMonth,
   };
 }
 

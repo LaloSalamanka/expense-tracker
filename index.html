@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="存錢記帳">
-<meta name="theme-color" content="#0a0a0a">
+<meta name="theme-color" content="#f2f2f7">
 <title>存錢記帳</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -49,6 +49,11 @@
 <!-- PAGE 3: 明細 -->
 <div class="page" id="page-detail">
   <div class="page-header">消費明細</div>
+  <div class="month-selector">
+    <button onclick="changeDetailMonth(-1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
+    <div class="month-label" id="detail-month"></div>
+    <button onclick="changeDetailMonth(1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></button>
+  </div>
   <div class="detail-filters" id="detail-filters"></div>
   <div class="tx-list" id="tx-list"></div>
 </div>

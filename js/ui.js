@@ -6,6 +6,7 @@ const state = {
   selectedCategory: '餐飲',
   selectedIncomeCategory: '獎金',
   reportMonth: new Date(),
+  detailMonth: new Date(),
   detailFilter: '全部',
   editingExpenseId: null,
 };
@@ -116,18 +117,44 @@ function updateAmountDisplay() {
   updateBillingIndicator();
 }
 
+// Compute billing display tag relative to current month (not expense date)
+function getBillingDisplayTag(e, refDate) {
+  if ((e.type || 'expense') === 'income') return { label: '即時收入', cls: 'income' };
+  if (!e.billingMonth) return { label: '即時支出', cls: 'instant' };
+  const ref = refDate || new Date();
+  const curStr = `${ref.getFullYear()}/${String(ref.getMonth() + 1).padStart(2, '0')}`;
+  const nm = ref.getMonth() === 11 ? 0 : ref.getMonth() + 1;
+  const ny = ref.getMonth() === 11 ? ref.getFullYear() + 1 : ref.getFullYear();
+  const nextStr = `${ny}/${String(nm + 1).padStart(2, '0')}`;
+  if (e.billingMonth === curStr) return { label: '本月帳單', cls: 'this-month' };
+  if (e.billingMonth === nextStr) return { label: '下月帳單', cls: 'next-month' };
+  return { label: e.billingMonth + ' 帳單', cls: 'this-month' };
+}
+
+function currentMonthStr() {
+  const now = new Date();
+  return `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function nextMonthStr() {
+  const now = new Date();
+  const nm = now.getMonth() === 11 ? 0 : now.getMonth() + 1;
+  const ny = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
+  return `${ny}/${String(nm + 1).padStart(2, '0')}`;
+}
+
 function updateBillingIndicator() {
   const el = document.getElementById('billing-indicator');
   if (state.inputType === 'income') { el.innerHTML = '<span class="billing-tag income">💰 額外收入</span>'; return; }
   const dateStr = document.getElementById('date-picker').value;
   if (!dateStr) { el.innerHTML = ''; return; }
   const info = getBillingInfo(dateStr, state.selectedCardId);
-  const map = {
-    '即時支出': `<span class="billing-tag instant">💵 現金即時支出</span>`,
-    '本月帳單': `<span class="billing-tag this-month">📋 ${info.billingMonth} 帳單 → 繳款 ${info.dueDate}</span>`,
-    '下月帳單': `<span class="billing-tag next-month">📋 ${info.billingMonth} 帳單 → 繳款 ${info.dueDate}</span>`,
-  };
-  el.innerHTML = map[info.billingStatus] || '';
+  if (!info.billingMonth) {
+    el.innerHTML = '<span class="billing-tag instant">💵 現金即時支出</span>';
+    return;
+  }
+  const tag = getBillingDisplayTag({ billingMonth: info.billingMonth });
+  el.innerHTML = `<span class="billing-tag ${tag.cls}">📋 ${info.billingMonth} 帳單（${tag.label}）→ 繳款 ${info.dueDate}</span>`;
 }
 
 function submitExpense() {
@@ -223,7 +250,16 @@ function fmtSigned(n) {
 }
 
 // ===== PAGE 3: DETAIL =====
+function changeDetailMonth(delta) {
+  state.detailMonth.setMonth(state.detailMonth.getMonth() + delta);
+  renderDetail();
+}
+
 function renderDetail() {
+  const dy = state.detailMonth.getFullYear();
+  const dm = state.detailMonth.getMonth();
+  document.getElementById('detail-month').textContent = `${dy}/${String(dm + 1).padStart(2, '0')}`;
+
   const cards = loadCards();
   const filters = ['全部', '收入', '本月帳單', '下月帳單', '即時支出', ...cards.map(c => c.id)];
   const filterLabels = { '全部': '全部', '收入': '收入', '本月帳單': '本月帳單', '下月帳單': '下月帳單', '即時支出': '即時支出' };
@@ -233,11 +269,30 @@ function renderDetail() {
     `<button class="filter-chip${f === state.detailFilter ? ' active' : ''}" onclick="setFilter('${f}')">${filterLabels[f] || f}</button>`
   ).join('');
 
-  let data = [...loadExpenses()].reverse();
+  // Use viewed month as reference for billing tags
+  const viewedMonthStr = `${dy}/${String(dm + 1).padStart(2, '0')}`;
+  const nxtDm = dm === 11 ? 0 : dm + 1;
+  const nxtDy = dm === 11 ? dy + 1 : dy;
+  const nextMonthOfViewed = `${nxtDy}/${String(nxtDm + 1).padStart(2, '0')}`;
+
+  // Show expenses dated in this month OR billed to this month (same record, no duplicates)
+  let data = loadExpenses().filter(e => {
+    const d = new Date(e.date);
+    const dateInMonth = d.getFullYear() === dy && d.getMonth() === dm;
+    const billingInMonth = e.billingMonth === viewedMonthStr;
+    return dateInMonth || billingInMonth;
+  });
+  data = [...data].reverse();
+
+  // Then apply chip filter (relative to viewed month)
   if (state.detailFilter === '收入') {
     data = data.filter(e => (e.type || 'expense') === 'income');
-  } else if (['本月帳單', '下月帳單', '即時支出'].includes(state.detailFilter)) {
-    data = data.filter(e => e.billingStatus === state.detailFilter);
+  } else if (state.detailFilter === '本月帳單') {
+    data = data.filter(e => e.billingMonth === viewedMonthStr);
+  } else if (state.detailFilter === '下月帳單') {
+    data = data.filter(e => e.billingMonth === nextMonthOfViewed);
+  } else if (state.detailFilter === '即時支出') {
+    data = data.filter(e => !e.billingMonth && (e.type || 'expense') !== 'income');
   } else if (state.detailFilter !== '全部') {
     data = data.filter(e => e.cardId === state.detailFilter);
   }
@@ -252,14 +307,14 @@ function renderDetail() {
     const allCats = [...CATEGORIES, ...INCOME_CATEGORIES];
     const cat = allCats.find(c => c.name === e.category);
     const icon = cat ? cat.icon : '📦';
-    const tagClass = isIncome ? 'income' : e.billingStatus === '本月帳單' ? 'this-month' : e.billingStatus === '下月帳單' ? 'next-month' : 'instant';
+    const tag = getBillingDisplayTag(e, state.detailMonth);
     const amountHtml = isIncome
       ? `<div class="tx-amount income">+$${e.amount.toLocaleString()}</div>`
       : `<div class="tx-amount">-$${e.amount.toLocaleString()}</div>`;
     return `<div class="tx-item" data-id="${e.id}">
       <div class="tx-icon">${icon}</div>
       <div class="tx-info" onclick="openEditModal('${e.id}')">
-        <div class="tx-title">${e.note || e.category} <span class="billing-tag ${tagClass}">${isIncome ? '即時收入' : e.billingStatus}</span></div>
+        <div class="tx-title">${e.note || e.category} <span class="billing-tag ${tag.cls}">${tag.label}</span></div>
         <div class="tx-sub"><span>${e.date}</span><span style="color:${getCardColor(e.cardId)}">● ${getCardName(e.cardId).replace('信用卡', '')}</span>${e.billingMonth ? `<span>帳單 ${e.billingMonth}</span>` : ''}</div>
       </div>
       <div class="tx-right">
