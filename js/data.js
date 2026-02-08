@@ -15,6 +15,15 @@ const CATEGORIES = [
   { name: '其他', icon: '📦' },
 ];
 
+const INCOME_CATEGORIES = [
+  { name: '獎金', icon: '🎁' },
+  { name: '退款', icon: '💳' },
+  { name: '代墊回收', icon: '🤝' },
+  { name: '副業', icon: '💼' },
+  { name: '利息', icon: '🏦' },
+  { name: '其他收入', icon: '💵' },
+];
+
 // ===== DEFAULT CARDS =====
 const DEFAULT_CARDS = [
   { id: 'cash', name: '現金花費', billDay: 0, dueDay: 0, color: '#27ae60', isSystem: true },
@@ -42,8 +51,11 @@ function saveExpenses(data) { localStorage.setItem(DB_KEY, JSON.stringify(data))
 
 function addExpense(expense) {
   const data = loadExpenses();
-  const billing = getBillingInfo(expense.date, expense.cardId);
-  const entry = { id: generateId(), ...expense, ...billing, createdAt: Date.now() };
+  const isIncome = expense.type === 'income';
+  const billing = isIncome
+    ? { billingStatus: '即時收入', billingMonth: null, dueDate: null }
+    : getBillingInfo(expense.date, expense.cardId);
+  const entry = { id: generateId(), type: isIncome ? 'income' : 'expense', ...expense, ...billing, createdAt: Date.now() };
   data.push(entry);
   saveExpenses(data);
   return entry;
@@ -53,10 +65,13 @@ function updateExpense(id, updates) {
   const data = loadExpenses();
   const idx = data.findIndex(e => e.id === id);
   if (idx === -1) return null;
+  const merged = { ...data[idx], ...updates };
+  const isIncome = (merged.type || 'expense') === 'income';
   // recalc billing if date or card changed
   if (updates.date || updates.cardId) {
-    const merged = { ...data[idx], ...updates };
-    const billing = getBillingInfo(merged.date, merged.cardId);
+    const billing = isIncome
+      ? { billingStatus: '即時收入', billingMonth: null, dueDate: null }
+      : getBillingInfo(merged.date, merged.cardId);
     Object.assign(updates, billing);
   }
   data[idx] = { ...data[idx], ...updates };
@@ -114,7 +129,7 @@ function recalcExpensesForCard(cardId) {
   const data = loadExpenses();
   let changed = false;
   data.forEach(e => {
-    if (e.cardId === cardId) {
+    if (e.cardId === cardId && (e.type || 'expense') !== 'income') {
       const billing = getBillingInfo(e.date, e.cardId);
       Object.assign(e, billing);
       changed = true;
@@ -186,19 +201,24 @@ function getReportData(year, month) {
   let thisMonthCardTotal = 0;
   billsDueThisMonth.forEach(e => { thisMonthCardTotal += e.amount; });
 
-  // Cash this month
+  // Cash this month & extra income
   let cashSpend = 0;
+  let monthExtraIncome = 0;
   const byCard = {};
   monthExpenses.forEach(e => {
+    if ((e.type || 'expense') === 'income') {
+      monthExtraIncome += e.amount;
+      return;
+    }
     const card = getCardById(e.cardId);
     if (card && card.billDay === 0) cashSpend += e.amount;
     byCard[e.cardId] = (byCard[e.cardId] || 0) + e.amount;
   });
 
-  const estimatedSavings = netIncome - nextMonthCardTotal - cashSpend;
+  const estimatedSavings = netIncome + monthExtraIncome - nextMonthCardTotal - cashSpend;
 
   return {
-    monthStr, netIncome, monthExpenses, cashSpend,
+    monthStr, netIncome, monthExpenses, cashSpend, monthExtraIncome,
     nextMonthCardTotal, nextMonthByCard,
     thisMonthCardTotal, byCard, estimatedSavings,
     billsDueNextMonth,
@@ -214,14 +234,19 @@ function exportMonthCSV(year, month) {
   const report = getReportData(year, month);
 
   let csv = '\ufeff';  // BOM for Excel
-  csv += `${year}年${month + 1}月 消費明細\n`;
-  csv += '日期,類別,備註,金額,付款方式,帳單狀態,帳單歸屬月份,繳款期限\n';
+  csv += `${year}年${month + 1}月 記帳明細\n`;
+  csv += '日期,類型,類別,備註,金額,付款方式,帳單狀態,帳單歸屬月份,繳款期限\n';
   data.sort((a, b) => a.date.localeCompare(b.date)).forEach(e => {
-    csv += `${e.date},${e.category},${(e.note || '').replace(/,/g, '，')},${e.amount},${getCardName(e.cardId)},${e.billingStatus},${e.billingMonth || ''},${e.dueDate || ''}\n`;
+    const isIncome = (e.type || 'expense') === 'income';
+    const typeLabel = isIncome ? '收入' : '支出';
+    const amtStr = isIncome ? `+${e.amount}` : `${e.amount}`;
+    csv += `${e.date},${typeLabel},${e.category},${(e.note || '').replace(/,/g, '，')},${amtStr},${getCardName(e.cardId)},${e.billingStatus},${e.billingMonth || ''},${e.dueDate || ''}\n`;
   });
 
   csv += `\n--- 月度摘要 ---\n`;
-  csv += `本月消費總額,${data.reduce((s, e) => s + e.amount, 0)}\n`;
+  const expenseOnly = data.filter(e => (e.type || 'expense') !== 'income');
+  csv += `本月消費總額,${expenseOnly.reduce((s, e) => s + e.amount, 0)}\n`;
+  csv += `本月額外收入,${report.monthExtraIncome}\n`;
   csv += `現金支出,${report.cashSpend}\n`;
   csv += `下月需繳信用卡帳單,${report.nextMonthCardTotal}\n`;
   csv += `每月可用餘額,${report.netIncome}\n`;

@@ -1,8 +1,10 @@
 // ===== GLOBAL STATE =====
 const state = {
   amount: '',
+  inputType: 'expense',
   selectedCardId: 'cash',
   selectedCategory: '餐飲',
+  selectedIncomeCategory: '獎金',
   reportMonth: new Date(),
   detailFilter: '全部',
   editingExpenseId: null,
@@ -48,6 +50,15 @@ function initInputPage() {
   updateAmountDisplay();
 }
 
+function setInputType(type) {
+  state.inputType = type;
+  document.querySelectorAll('.type-btn').forEach(b => b.classList.toggle('active', b.dataset.type === type));
+  renderCategoryGrid();
+  updateAmountDisplay();
+  buildNumpad();
+  updateBillingIndicator();
+}
+
 function renderPaymentChips() {
   const cards = loadCards();
   document.getElementById('payment-selector').innerHTML = cards.map(c =>
@@ -56,8 +67,11 @@ function renderPaymentChips() {
 }
 
 function renderCategoryGrid() {
-  document.getElementById('category-grid').innerHTML = CATEGORIES.map(c =>
-    `<button class="cat-btn${c.name === state.selectedCategory ? ' active' : ''}" data-name="${c.name}" onclick="selectCategory('${c.name}')"><span class="icon">${c.icon}</span>${c.name}</button>`
+  const isIncome = state.inputType === 'income';
+  const cats = isIncome ? INCOME_CATEGORIES : CATEGORIES;
+  const selected = isIncome ? state.selectedIncomeCategory : state.selectedCategory;
+  document.getElementById('category-grid').innerHTML = cats.map(c =>
+    `<button class="cat-btn${c.name === selected ? ' active' : ''}" data-name="${c.name}" onclick="selectCategory('${c.name}')"><span class="icon">${c.icon}</span>${c.name}</button>`
   ).join('');
 }
 
@@ -68,15 +82,17 @@ function selectCard(id) {
 }
 
 function selectCategory(name) {
-  state.selectedCategory = name;
+  if (state.inputType === 'income') state.selectedIncomeCategory = name;
+  else state.selectedCategory = name;
   document.querySelectorAll('.cat-btn').forEach(b => b.classList.toggle('active', b.dataset.name === name));
 }
 
 function buildNumpad() {
+  const isIncome = state.inputType === 'income';
   const keys = ['7','8','9','4','5','6','1','2','3','⌫','0','✓'];
   document.getElementById('numpad').innerHTML = keys.map(k => {
     if (k === '⌫') return `<button class="num-btn del" onclick="numInput('del')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg></button>`;
-    if (k === '✓') return `<button class="num-btn confirm" onclick="submitExpense()">記帳</button>`;
+    if (k === '✓') return `<button class="num-btn confirm${isIncome ? ' income' : ''}" onclick="submitExpense()">${isIncome ? '記收入' : '記帳'}</button>`;
     return `<button class="num-btn" onclick="numInput('${k}')">${k}</button>`;
   }).join('');
 }
@@ -89,13 +105,20 @@ function numInput(key) {
 
 function updateAmountDisplay() {
   const el = document.getElementById('amount-display');
-  if (!state.amount) { el.textContent = '$0'; el.classList.add('empty'); }
-  else { el.textContent = '$' + Number(state.amount).toLocaleString(); el.classList.remove('empty'); }
+  const isIncome = state.inputType === 'income';
+  if (!state.amount) {
+    el.textContent = isIncome ? '+$0' : '$0';
+    el.className = 'value empty' + (isIncome ? ' income' : '');
+  } else {
+    el.textContent = (isIncome ? '+$' : '$') + Number(state.amount).toLocaleString();
+    el.className = 'value' + (isIncome ? ' income' : '');
+  }
   updateBillingIndicator();
 }
 
 function updateBillingIndicator() {
   const el = document.getElementById('billing-indicator');
+  if (state.inputType === 'income') { el.innerHTML = '<span class="billing-tag income">💰 額外收入</span>'; return; }
   const dateStr = document.getElementById('date-picker').value;
   if (!dateStr) { el.innerHTML = ''; return; }
   const info = getBillingInfo(dateStr, state.selectedCardId);
@@ -109,17 +132,19 @@ function updateBillingIndicator() {
 
 function submitExpense() {
   if (!state.amount || state.amount === '0') { showToast('請輸入金額', true); return; }
+  const isIncome = state.inputType === 'income';
   const entry = addExpense({
     date: document.getElementById('date-picker').value,
     amount: Number(state.amount),
     cardId: state.selectedCardId,
-    category: state.selectedCategory,
+    category: isIncome ? state.selectedIncomeCategory : state.selectedCategory,
     note: document.getElementById('note-input').value.trim(),
+    type: isIncome ? 'income' : 'expense',
   });
   state.amount = '';
   document.getElementById('note-input').value = '';
   updateAmountDisplay();
-  showToast(`已記錄 $${entry.amount.toLocaleString()}`);
+  showToast(isIncome ? `已記錄收入 +$${entry.amount.toLocaleString()}` : `已記錄 $${entry.amount.toLocaleString()}`);
 }
 
 // ===== PAGE 2: REPORT =====
@@ -136,13 +161,14 @@ function renderReport() {
   const r = getReportData(y, m);
   const savingsClass = r.estimatedSavings >= 0 ? 'highlight' : 'warn';
 
+  const incomeLine = r.monthExtraIncome > 0 ? `+ $${r.monthExtraIncome.toLocaleString()} 本月額外收入<br>` : '';
   let html = `<div class="summary-cards">
     <div class="s-card ${savingsClass}">
       <div class="s-label">💰 預估下月可存現金</div>
       <div class="s-value">${fmtSigned(r.estimatedSavings)}</div>
       <div class="s-sub">
         $${r.netIncome.toLocaleString()} 可用餘額<br>
-        − $${r.nextMonthCardTotal.toLocaleString()} 下月信用卡帳單<br>
+        ${incomeLine}− $${r.nextMonthCardTotal.toLocaleString()} 下月信用卡帳單<br>
         − $${r.cashSpend.toLocaleString()} 本月現金支出<br>
         ＝ ${fmtSigned(r.estimatedSavings)}
       </div>
@@ -154,7 +180,11 @@ function renderReport() {
     <div class="s-card">
       <div class="s-label">💵 本月現金支出</div>
       <div class="s-value">$${r.cashSpend.toLocaleString()}</div>
-    </div>
+    </div>${r.monthExtraIncome > 0 ? `
+    <div class="s-card">
+      <div class="s-label">💰 本月額外收入</div>
+      <div class="s-value" style="color:var(--accent)">+$${r.monthExtraIncome.toLocaleString()}</div>
+    </div>` : ''}
     <div class="s-card">
       <div class="s-label">🔄 每月可用餘額（收入−固定）</div>
       <div class="s-value" style="color:var(--blue)">$${r.netIncome.toLocaleString()}</div>
@@ -195,8 +225,8 @@ function fmtSigned(n) {
 // ===== PAGE 3: DETAIL =====
 function renderDetail() {
   const cards = loadCards();
-  const filters = ['全部', '本月帳單', '下月帳單', '即時支出', ...cards.map(c => c.id)];
-  const filterLabels = { '全部': '全部', '本月帳單': '本月帳單', '下月帳單': '下月帳單', '即時支出': '即時支出' };
+  const filters = ['全部', '收入', '本月帳單', '下月帳單', '即時支出', ...cards.map(c => c.id)];
+  const filterLabels = { '全部': '全部', '收入': '收入', '本月帳單': '本月帳單', '下月帳單': '下月帳單', '即時支出': '即時支出' };
   cards.forEach(c => filterLabels[c.id] = c.name.replace('信用卡', ''));
 
   document.getElementById('detail-filters').innerHTML = filters.map(f =>
@@ -204,7 +234,9 @@ function renderDetail() {
   ).join('');
 
   let data = [...loadExpenses()].reverse();
-  if (['本月帳單', '下月帳單', '即時支出'].includes(state.detailFilter)) {
+  if (state.detailFilter === '收入') {
+    data = data.filter(e => (e.type || 'expense') === 'income');
+  } else if (['本月帳單', '下月帳單', '即時支出'].includes(state.detailFilter)) {
     data = data.filter(e => e.billingStatus === state.detailFilter);
   } else if (state.detailFilter !== '全部') {
     data = data.filter(e => e.cardId === state.detailFilter);
@@ -216,17 +248,22 @@ function renderDetail() {
   }
 
   document.getElementById('tx-list').innerHTML = data.map(e => {
-    const cat = CATEGORIES.find(c => c.name === e.category);
+    const isIncome = (e.type || 'expense') === 'income';
+    const allCats = [...CATEGORIES, ...INCOME_CATEGORIES];
+    const cat = allCats.find(c => c.name === e.category);
     const icon = cat ? cat.icon : '📦';
-    const tagClass = e.billingStatus === '本月帳單' ? 'this-month' : e.billingStatus === '下月帳單' ? 'next-month' : 'instant';
+    const tagClass = isIncome ? 'income' : e.billingStatus === '本月帳單' ? 'this-month' : e.billingStatus === '下月帳單' ? 'next-month' : 'instant';
+    const amountHtml = isIncome
+      ? `<div class="tx-amount income">+$${e.amount.toLocaleString()}</div>`
+      : `<div class="tx-amount">-$${e.amount.toLocaleString()}</div>`;
     return `<div class="tx-item" data-id="${e.id}">
       <div class="tx-icon">${icon}</div>
       <div class="tx-info" onclick="openEditModal('${e.id}')">
-        <div class="tx-title">${e.note || e.category} <span class="billing-tag ${tagClass}">${e.billingStatus}</span></div>
+        <div class="tx-title">${e.note || e.category} <span class="billing-tag ${tagClass}">${isIncome ? '即時收入' : e.billingStatus}</span></div>
         <div class="tx-sub"><span>${e.date}</span><span style="color:${getCardColor(e.cardId)}">● ${getCardName(e.cardId).replace('信用卡', '')}</span>${e.billingMonth ? `<span>帳單 ${e.billingMonth}</span>` : ''}</div>
       </div>
       <div class="tx-right">
-        <div class="tx-amount">-$${e.amount.toLocaleString()}</div>
+        ${amountHtml}
         <div class="tx-actions">
           <button class="tx-action-btn edit-btn" onclick="openEditModal('${e.id}')" title="編輯">✏️</button>
           <button class="tx-action-btn del-btn" onclick="confirmDeleteExpense('${e.id}')" title="刪除">🗑️</button>
@@ -252,8 +289,10 @@ function openEditModal(id) {
   if (!expense) return;
   state.editingExpenseId = id;
   const cards = loadCards();
+  const isIncome = (expense.type || 'expense') === 'income';
+  const cats = isIncome ? INCOME_CATEGORIES : CATEGORIES;
 
-  document.getElementById('modal-title').textContent = '編輯消費';
+  document.getElementById('modal-title').textContent = isIncome ? '編輯收入' : '編輯消費';
   document.getElementById('modal-body').innerHTML = `
     <div class="modal-field">
       <label>日期</label>
@@ -269,7 +308,7 @@ function openEditModal(id) {
     </div>
     <div class="modal-field">
       <label>分類</label>
-      <select id="edit-category" class="modal-input">${CATEGORIES.map(c => `<option${c.name === expense.category ? ' selected' : ''}>${c.name}</option>`).join('')}</select>
+      <select id="edit-category" class="modal-input">${cats.map(c => `<option${c.name === expense.category ? ' selected' : ''}>${c.name}</option>`).join('')}</select>
     </div>
     <div class="modal-field">
       <label>備註</label>

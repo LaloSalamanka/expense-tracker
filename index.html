@@ -18,6 +18,10 @@
 <!-- PAGE 1: 記帳 -->
 <div class="page active" id="page-input">
   <div class="page-header">記帳</div>
+  <div class="type-toggle" id="type-toggle">
+    <button class="type-btn active" data-type="expense" onclick="setInputType('expense')">支出</button>
+    <button class="type-btn" data-type="income" onclick="setInputType('income')">收入</button>
+  </div>
   <div class="amount-display">
     <div class="label" id="billing-indicator"></div>
     <div class="value empty" id="amount-display">$0</div>
