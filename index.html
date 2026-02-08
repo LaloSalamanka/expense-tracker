@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="存錢記帳">
+<meta name="theme-color" content="#0a0a0a">
+<title>存錢記帳</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- PAGE 1: 記帳 -->
+<div class="page active" id="page-input">
+  <div class="page-header">記帳</div>
+  <div class="amount-display">
+    <div class="label" id="billing-indicator"></div>
+    <div class="value empty" id="amount-display">$0</div>
+  </div>
+  <div class="payment-selector" id="payment-selector"></div>
+  <div class="category-grid" id="category-grid"></div>
+  <div class="note-row">
+    <input type="date" class="date-picker" id="date-picker">
+    <input type="text" class="note-input" id="note-input" placeholder="備註（選填）" maxlength="30">
+  </div>
+  <div class="numpad" id="numpad"></div>
+</div>
+
+<!-- PAGE 2: 報表 -->
+<div class="page" id="page-report">
+  <div class="page-header">月報表</div>
+  <div class="month-selector">
+    <button onclick="changeMonth(-1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
+    <div class="month-label" id="report-month"></div>
+    <button onclick="changeMonth(1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></button>
+  </div>
+  <div id="report-content"></div>
+</div>
+
+<!-- PAGE 3: 明細 -->
+<div class="page" id="page-detail">
+  <div class="page-header">消費明細</div>
+  <div class="detail-filters" id="detail-filters"></div>
+  <div class="tx-list" id="tx-list"></div>
+</div>
+
+<!-- PAGE 4: 設定 -->
+<div class="page" id="page-settings">
+  <div class="page-header">設定</div>
+  <div class="settings-section" id="settings-content"></div>
+</div>
+
+<!-- Tab Bar -->
+<div class="tab-bar">
+  <button class="tab-item active" onclick="switchTab('input')" id="tab-input">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
+    <span>記帳</span>
+  </button>
+  <button class="tab-item" onclick="switchTab('report')" id="tab-report">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+    <span>報表</span>
+  </button>
+  <button class="tab-item" onclick="switchTab('detail')" id="tab-detail">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+    <span>明細</span>
+  </button>
+  <button class="tab-item" onclick="switchTab('settings')" id="tab-settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+    <span>設定</span>
+  </button>
+</div>
+
+<!-- Edit / Card Modal (bottom sheet) -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal-sheet">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">編輯</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div id="modal-body"></div>
+    <button class="modal-save" id="modal-save">儲存</button>
+  </div>
+</div>
+
+<!-- Confirm Dialog -->
+<div class="dialog-overlay" id="dialog-overlay">
+  <div class="dialog-box">
+    <div class="dialog-title" id="dialog-title"></div>
+    <div class="dialog-msg" id="dialog-msg"></div>
+    <div class="dialog-btns">
+      <button class="cancel-btn" onclick="closeDialog()">取消</button>
+      <button class="confirm-btn" id="dialog-confirm">確定</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script src="js/data.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>
