@@ -21,6 +21,15 @@ function initFirebase() {
   _db.enablePersistence({ synchronizeTabs: true }).catch(err => {
     console.warn('Firestore persistence failed:', err.code);
   });
+
+  // Handle redirect result (for Android Google login)
+  _auth.getRedirectResult().then(result => {
+    if (result.user) {
+      console.log('Redirect login success:', result.user.email);
+    }
+  }).catch(err => {
+    console.error('Redirect login error:', err);
+  });
 }
 
 // ===== AUTH =====
@@ -30,6 +39,11 @@ function getCurrentUser() {
 
 function signInWithGoogle() {
   const provider = new firebase.auth.GoogleAuthProvider();
+
+  // Android in-app browsers block signInWithPopup, use redirect instead
+  if (/Android/i.test(navigator.userAgent)) {
+    return _auth.signInWithRedirect(provider);
+  }
   return _auth.signInWithPopup(provider);
 }
 
