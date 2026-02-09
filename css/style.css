@@ -455,6 +455,15 @@ select.modal-input { cursor:pointer; }
 }
 .login-skip:active { color:var(--text); }
 .login-hint { font-size:12px; color:var(--text3); margin-top:16px; line-height:1.6; }
+.login-inapp-warning { margin-top:20px; text-align:center; }
+.login-inapp-title {
+  font-size:16px; font-weight:600; color:var(--red); margin-bottom:8px;
+}
+.login-inapp-msg {
+  font-size:13px; color:var(--text2); line-height:1.6; margin-bottom:20px;
+}
+.login-inapp-warning .login-btn { margin-top:0; }
+.login-inapp-warning .login-skip { margin-top:8px; }
 
 /* ===== Loading Overlay ===== */
 .loading-overlay {

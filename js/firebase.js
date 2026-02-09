@@ -37,14 +37,24 @@ function getCurrentUser() {
   return _currentUser;
 }
 
+// Detect in-app browsers (LINE, Facebook, Instagram, etc.) which block Google OAuth
+function isInAppBrowser() {
+  const ua = navigator.userAgent || '';
+  return /Line\//i.test(ua) || /FBAN|FBAV/i.test(ua) || /Instagram/i.test(ua)
+    || /MicroMessenger/i.test(ua) || /Twitter/i.test(ua)
+    || (/Android/i.test(ua) && /wv\)/i.test(ua));
+}
+
 function signInWithGoogle() {
   const provider = new firebase.auth.GoogleAuthProvider();
-
-  // Android in-app browsers block signInWithPopup, use redirect instead
-  if (/Android/i.test(navigator.userAgent)) {
-    return _auth.signInWithRedirect(provider);
-  }
-  return _auth.signInWithPopup(provider);
+  // Use popup for all regular browsers (desktop, Android Chrome, iOS Safari)
+  // Falls back to redirect only if popup is blocked
+  return _auth.signInWithPopup(provider).catch(err => {
+    if (err.code === 'auth/popup-blocked') {
+      return _auth.signInWithRedirect(provider);
+    }
+    throw err;
+  });
 }
 
 function firebaseSignOut() {

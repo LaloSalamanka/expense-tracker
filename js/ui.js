@@ -668,6 +668,27 @@ function confirmClearAllData() {
   }, '清除');
 }
 
+// ===== IN-APP BROWSER HANDLER =====
+function openInExternalBrowser() {
+  const url = location.href;
+  // Android: use intent URL to open in Chrome
+  if (/Android/i.test(navigator.userAgent)) {
+    location.href = 'intent://' + location.host + location.pathname
+      + '#Intent;scheme=https;action=android.intent.action.VIEW;end';
+    return;
+  }
+  // iOS/other: try window.open, show fallback message
+  const w = window.open(url, '_blank');
+  if (!w) {
+    // Copy URL to clipboard as fallback
+    navigator.clipboard.writeText(url).then(() => {
+      showToast('已複製網址，請貼到 Safari 開啟');
+    }).catch(() => {
+      prompt('請複製此網址到瀏覽器開啟：', url);
+    });
+  }
+}
+
 // ===== AUTH HANDLERS =====
 async function handleGoogleLogin() {
   const btn = document.getElementById('google-login-btn');
@@ -741,6 +762,15 @@ function _initApp() {
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof initFirebase === 'function') {
     initFirebase();
+
+    // Detect in-app browser and show warning instead of login button
+    if (typeof isInAppBrowser === 'function' && isInAppBrowser()) {
+      document.getElementById('google-login-btn').style.display = 'none';
+      document.querySelector('#login-screen .login-hint').style.display = 'none';
+      document.querySelector('#login-screen > .login-content > .login-skip').style.display = 'none';
+      document.getElementById('inapp-warning').style.display = 'block';
+    }
+
     let _appInitialized = false;
     onAuthChanged(async (user) => {
       if (user) {

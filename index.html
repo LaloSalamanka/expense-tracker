@@ -30,6 +30,15 @@
     </button>
     <button class="login-skip" onclick="skipLogin()">先不登入，使用本地模式</button>
     <p class="login-hint">登入後資料將自動同步至雲端<br>本地模式可稍後於設定頁登入</p>
+    <div class="login-inapp-warning" id="inapp-warning" style="display:none">
+      <p class="login-inapp-title">無法在此瀏覽器登入</p>
+      <p class="login-inapp-msg">Google 不允許在 App 內建瀏覽器中登入。<br>請用 Chrome 或 Safari 開啟此頁面。</p>
+      <button class="login-btn" onclick="openInExternalBrowser()">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        用預設瀏覽器開啟
+      </button>
+      <button class="login-skip" onclick="skipLogin()">先不登入，使用本地模式</button>
+    </div>
   </div>
 </div>
 
