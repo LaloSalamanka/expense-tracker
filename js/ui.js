@@ -282,7 +282,6 @@ function renderDetail() {
     const billingInMonth = e.billingMonth === viewedMonthStr;
     return dateInMonth || billingInMonth;
   });
-  data = [...data].reverse();
 
   // Then apply chip filter (relative to viewed month)
   if (state.detailFilter === '收入') {
@@ -297,33 +296,67 @@ function renderDetail() {
     data = data.filter(e => e.cardId === state.detailFilter);
   }
 
+  // Sort by date descending (newest first)
+  data.sort((a, b) => b.date.localeCompare(a.date));
+
   if (!data.length) {
     document.getElementById('tx-list').innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">沒有符合條件的記錄</div></div>';
     return;
   }
 
-  document.getElementById('tx-list').innerHTML = data.map(e => {
-    const isIncome = (e.type || 'expense') === 'income';
-    const allCats = [...CATEGORIES, ...INCOME_CATEGORIES];
-    const cat = allCats.find(c => c.name === e.category);
-    const icon = cat ? cat.icon : '📦';
-    const tag = getBillingDisplayTag(e, state.detailMonth);
-    const amountHtml = isIncome
-      ? `<div class="tx-amount income">+$${e.amount.toLocaleString()}</div>`
-      : `<div class="tx-amount">-$${e.amount.toLocaleString()}</div>`;
-    return `<div class="tx-item" data-id="${e.id}">
-      <div class="tx-icon">${icon}</div>
-      <div class="tx-info" onclick="openEditModal('${e.id}')">
-        <div class="tx-title">${e.note || e.category} <span class="billing-tag ${tag.cls}">${tag.label}</span></div>
-        <div class="tx-sub"><span>${e.date}</span><span style="color:${getCardColor(e.cardId)}">● ${getCardName(e.cardId).replace('信用卡', '')}</span>${e.billingMonth ? `<span>帳單 ${e.billingMonth}</span>` : ''}</div>
-      </div>
-      <div class="tx-right">
-        ${amountHtml}
-        <div class="tx-actions">
-          <button class="tx-action-btn edit-btn" onclick="openEditModal('${e.id}')" title="編輯">✏️</button>
-          <button class="tx-action-btn del-btn" onclick="confirmDeleteExpense('${e.id}')" title="刪除">🗑️</button>
+  // Group by date
+  const groups = [];
+  let curGroup = null;
+  data.forEach(e => {
+    if (!curGroup || curGroup.date !== e.date) {
+      curGroup = { date: e.date, items: [] };
+      groups.push(curGroup);
+    }
+    curGroup.items.push(e);
+  });
+
+  const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+
+  document.getElementById('tx-list').innerHTML = groups.map(g => {
+    const d = new Date(g.date);
+    const dayLabel = `${d.getMonth() + 1}/${d.getDate()} (${weekdays[d.getDay()]})`;
+    const dayTotal = g.items.reduce((s, e) => {
+      return s + ((e.type || 'expense') === 'income' ? e.amount : -e.amount);
+    }, 0);
+    const totalCls = dayTotal >= 0 ? 'income' : '';
+    const totalStr = dayTotal >= 0 ? `+$${dayTotal.toLocaleString()}` : `-$${Math.abs(dayTotal).toLocaleString()}`;
+
+    const itemsHtml = g.items.map(e => {
+      const isIncome = (e.type || 'expense') === 'income';
+      const allCats = [...CATEGORIES, ...INCOME_CATEGORIES];
+      const cat = allCats.find(c => c.name === e.category);
+      const icon = cat ? cat.icon : '📦';
+      const tag = getBillingDisplayTag(e, state.detailMonth);
+      const amountHtml = isIncome
+        ? `<div class="tx-amount income">+$${e.amount.toLocaleString()}</div>`
+        : `<div class="tx-amount">-$${e.amount.toLocaleString()}</div>`;
+      return `<div class="tx-item" data-id="${e.id}">
+        <div class="tx-icon">${icon}</div>
+        <div class="tx-info" onclick="openEditModal('${e.id}')">
+          <div class="tx-title">${e.note || e.category} <span class="billing-tag ${tag.cls}">${tag.label}</span></div>
+          <div class="tx-sub"><span style="color:${getCardColor(e.cardId)}">● ${getCardName(e.cardId).replace('信用卡', '')}</span>${e.billingMonth ? `<span>帳單 ${e.billingMonth}</span>` : ''}</div>
         </div>
+        <div class="tx-right">
+          ${amountHtml}
+          <div class="tx-actions">
+            <button class="tx-action-btn edit-btn" onclick="openEditModal('${e.id}')" title="編輯">✏️</button>
+            <button class="tx-action-btn del-btn" onclick="confirmDeleteExpense('${e.id}')" title="刪除">🗑️</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    return `<div class="tx-date-group">
+      <div class="tx-date-header">
+        <span class="tx-date-label">${dayLabel}</span>
+        <span class="tx-date-total ${totalCls}">${totalStr}</span>
       </div>
+      ${itemsHtml}
     </div>`;
   }).join('');
 }
@@ -428,7 +461,16 @@ function renderSettings() {
       </div>
     </div>
 
-    <div class="settings-group-title">匯出資料</div>
+    <div class="settings-group-title">備份與還原</div>
+    <div class="settings-group">
+      <div class="setting-row" style="justify-content:center;gap:10px;flex-wrap:wrap">
+        <button class="add-card-btn" onclick="doBackup()">📦 備份所有資料</button>
+        <button class="add-card-btn" onclick="document.getElementById('restore-file').click()">📥 還原備份</button>
+        <input type="file" id="restore-file" accept=".json" style="display:none" onchange="doRestore(this)">
+      </div>
+    </div>
+
+    <div class="settings-group-title">匯出 CSV</div>
     <div class="settings-group" id="export-section">
       <div class="setting-row">
         <span class="setting-label">選擇月份</span>
@@ -471,6 +513,35 @@ function doExport() {
   a.click();
   URL.revokeObjectURL(a.href);
   showToast('已匯出 CSV');
+}
+
+function doBackup() {
+  const json = exportBackup();
+  const date = new Date().toISOString().slice(0, 10);
+  const blob = new Blob([json], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `記帳備份_${date}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('已下載備份檔案');
+}
+
+function doRestore(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const count = importBackup(reader.result);
+      showToast(`已還原 ${count} 筆記錄`);
+      renderSettings();
+    } catch (e) {
+      showToast('還原失敗：檔案格式錯誤', true);
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
 }
 
 // ===== CARD EDITOR MODAL =====

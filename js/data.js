@@ -259,6 +259,26 @@ function exportMonthCSV(year, month) {
   return { csv, filename: `記帳_${monthStr}.csv` };
 }
 
+// ===== BACKUP & RESTORE =====
+function exportBackup() {
+  return JSON.stringify({
+    version: 3,
+    timestamp: new Date().toISOString(),
+    data: loadExpenses(),
+    cards: loadCards(),
+    settings: loadSettings(),
+  });
+}
+
+function importBackup(jsonStr) {
+  const backup = JSON.parse(jsonStr);
+  if (!backup.version || !backup.data) throw new Error('無效的備份檔案');
+  localStorage.setItem(DB_KEY, JSON.stringify(backup.data));
+  if (backup.cards) localStorage.setItem(CARDS_KEY, JSON.stringify(backup.cards));
+  if (backup.settings) localStorage.setItem(SETTINGS_KEY, JSON.stringify(backup.settings));
+  return backup.data.length;
+}
+
 // ===== DATA STATS =====
 function getDataStats() {
   const data = loadExpenses();
