@@ -85,8 +85,7 @@ async function syncFromCloud() {
     }
 
     if (cloudHasData) {
-      // Cloud wins: auto-backup local data first if it exists
-      if (localHasData) {
+      if (localHasData && localStorage.getItem('auto_backup_on_sync') === 'true') {
         _autoBackupLocal();
       }
       localStorage.setItem(DB_KEY, JSON.stringify(expSnap.data().items));

@@ -498,7 +498,14 @@ function renderSettings() {
         <button class="add-card-btn" onclick="doBackup()">📦 備份所有資料</button>
         <button class="add-card-btn" onclick="document.getElementById('restore-file').click()">📥 還原備份</button>
         <input type="file" id="restore-file" accept=".json" style="display:none" onchange="doRestore(this)">
-      </div>
+      </div>${user ? `
+      <div class="setting-row">
+        <span class="setting-label">同步時自動備份本地資料</span>
+        <label class="toggle-switch">
+          <input type="checkbox" ${localStorage.getItem('auto_backup_on_sync') === 'true' ? 'checked' : ''} onchange="toggleAutoBackup(this.checked)">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>` : ''}
     </div>
 
     <div class="settings-group-title">匯出 CSV</div>
@@ -529,6 +536,10 @@ function saveSetting(key, val) {
   s[key] = Number(val);
   saveSettings(s);
   renderSettings();
+}
+
+function toggleAutoBackup(on) {
+  localStorage.setItem('auto_backup_on_sync', on ? 'true' : 'false');
 }
 
 function doExport() {
