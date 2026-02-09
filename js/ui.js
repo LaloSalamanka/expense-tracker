@@ -671,22 +671,27 @@ function confirmClearAllData() {
 // ===== IN-APP BROWSER HANDLER =====
 function openInExternalBrowser() {
   const url = location.href;
-  // Android: use intent URL to open in Chrome
+  // Android: use intent URL to open in default browser
   if (/Android/i.test(navigator.userAgent)) {
-    location.href = 'intent://' + location.host + location.pathname
+    location.href = 'intent://' + location.host + location.pathname + location.search
       + '#Intent;scheme=https;action=android.intent.action.VIEW;end';
     return;
   }
-  // iOS/other: try window.open, show fallback message
-  const w = window.open(url, '_blank');
-  if (!w) {
-    // Copy URL to clipboard as fallback
-    navigator.clipboard.writeText(url).then(() => {
-      showToast('已複製網址，請貼到 Safari 開啟');
-    }).catch(() => {
-      prompt('請複製此網址到瀏覽器開啟：', url);
-    });
-  }
+  // iOS: copy URL to clipboard (no way to programmatically open Safari from WebView)
+  _copyUrlToClipboard(url);
+}
+
+function _copyUrlToClipboard(url) {
+  const btn = document.querySelector('#inapp-warning .login-btn');
+  navigator.clipboard.writeText(url).then(() => {
+    if (btn) {
+      btn.textContent = '已複製！請開啟 Safari 貼上';
+      btn.style.background = 'var(--accent)';
+      btn.style.color = '#fff';
+    }
+  }).catch(() => {
+    prompt('請複製此網址，到 Safari 開啟：', url);
+  });
 }
 
 // ===== AUTH HANDLERS =====

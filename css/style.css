@@ -462,7 +462,11 @@ select.modal-input { cursor:pointer; }
 .login-inapp-msg {
   font-size:13px; color:var(--text2); line-height:1.6; margin-bottom:20px;
 }
-.login-inapp-warning .login-btn { margin-top:0; }
+.login-inapp-steps {
+  text-align:left; margin:0 auto 20px; display:inline-block;
+  font-size:14px; color:var(--text); line-height:2;
+}
+.login-inapp-warning .login-btn { margin-top:0; transition:all .2s; }
 .login-inapp-warning .login-skip { margin-top:8px; }
 
 /* ===== Loading Overlay ===== */
