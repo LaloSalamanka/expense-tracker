@@ -21,8 +21,6 @@ function initFirebase() {
   _db.enablePersistence({ synchronizeTabs: true }).catch(err => {
     console.warn('Firestore persistence failed:', err.code);
   });
-  // Check for redirect result (mobile Google login)
-  _auth.getRedirectResult().catch(() => {});
 }
 
 // ===== AUTH =====
@@ -32,10 +30,6 @@ function getCurrentUser() {
 
 function signInWithGoogle() {
   const provider = new firebase.auth.GoogleAuthProvider();
-  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-  if (isMobile) {
-    return _auth.signInWithRedirect(provider);
-  }
   return _auth.signInWithPopup(provider);
 }
 

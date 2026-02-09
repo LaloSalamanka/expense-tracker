@@ -453,6 +453,15 @@ function renderSettings() {
         <button class="add-card-btn" onclick="handleLogout()">登出</button>
       </div>
     </div>`;
+  } else if (typeof signInWithGoogle === 'function') {
+    html += `
+    <div class="settings-group-title">帳號</div>
+    <div class="settings-group">
+      <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:8px">
+        <div style="font-size:13px;color:var(--text2);text-align:center">目前為本地模式，登入後資料將同步至雲端</div>
+        <button class="add-card-btn" onclick="handleSettingsLogin()">登入 Google 帳號</button>
+      </div>
+    </div>`;
   }
 
   html += `
@@ -664,9 +673,30 @@ async function handleGoogleLogin() {
   }
 }
 
+function skipLogin() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.querySelector('.tab-bar').style.display = 'flex';
+  document.querySelectorAll('.page').forEach(p => p.style.visibility = 'visible');
+  _initApp();
+}
+
+async function handleSettingsLogin() {
+  try {
+    showLoading(true);
+    await signInWithGoogle();
+    // onAuthChanged handles sync + re-render
+  } catch (err) {
+    showLoading(false);
+    console.error('Login failed:', err);
+    showToast('登入失敗，請重試', true);
+  }
+}
+
 function handleLogout() {
-  showDialog('登出', '登出後仍可用備份還原資料。確定要登出嗎？', async () => {
+  showDialog('登出', '登出後資料仍保留在本地，可繼續使用。確定要登出嗎？', async () => {
     await firebaseSignOut();
+    // Stay in app (local mode), just re-render settings
+    renderSettings();
   }, '登出');
 }
 
@@ -700,8 +730,10 @@ function _initApp() {
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof initFirebase === 'function') {
     initFirebase();
+    let _appInitialized = false;
     onAuthChanged(async (user) => {
       if (user) {
+        // User signed in (from login screen or settings)
         showLoading(true);
         document.getElementById('login-screen').style.display = 'none';
         document.querySelector('.tab-bar').style.display = 'flex';
@@ -709,7 +741,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         await syncFromCloud();
         showLoading(false);
-        _initApp();
+
+        if (!_appInitialized) {
+          _initApp();
+          _appInitialized = true;
+        }
 
         // Re-render visible page
         const activePage = document.querySelector('.page.active');
@@ -719,11 +755,12 @@ document.addEventListener('DOMContentLoaded', () => {
           if (pageId === 'detail') renderDetail();
           if (pageId === 'settings') renderSettings();
         }
-      } else {
-        document.getElementById('login-screen').style.display = 'flex';
-        document.querySelector('.tab-bar').style.display = 'none';
-        document.querySelectorAll('.page').forEach(p => p.style.visibility = 'hidden');
+      } else if (!_appInitialized) {
+        // First load, not signed in — show login screen
         showLoading(false);
+      } else {
+        // Logged out while using app — stay in app (local mode)
+        renderSettings();
       }
     });
   } else {
