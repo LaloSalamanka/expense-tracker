@@ -432,8 +432,30 @@ function renderSettings() {
   const settings = loadSettings();
   const cards = loadCards();
   const stats = getDataStats();
+  const user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
 
-  let html = `
+  let html = '';
+  if (user) {
+    html += `
+    <div class="settings-group-title">帳號</div>
+    <div class="settings-group">
+      <div class="setting-row">
+        <div style="display:flex;align-items:center;gap:10px">
+          <img src="${user.photoURL || ''}" style="width:32px;height:32px;border-radius:50%;background:var(--surface2)" referrerpolicy="no-referrer" alt="">
+          <div>
+            <div class="setting-label">${user.displayName || '使用者'}</div>
+            <div style="font-size:12px;color:var(--text3)">${user.email || ''}</div>
+          </div>
+        </div>
+        <button class="icon-btn" onclick="handleManualSync()" title="手動同步">🔄</button>
+      </div>
+      <div class="setting-row" style="justify-content:center">
+        <button class="add-card-btn" onclick="handleLogout()">登出</button>
+      </div>
+    </div>`;
+  }
+
+  html += `
     <div class="settings-group-title">收入設定</div>
     <div class="settings-group">
       <div class="setting-row"><span class="setting-label">每月基本收入</span><input class="setting-input" type="number" value="${settings.monthlyIncome}" onchange="saveSetting('monthlyIncome',this.value)"></div>
@@ -488,7 +510,7 @@ function renderSettings() {
     </div>
 
     <button class="action-btn danger" onclick="confirmClearAllData()">🗑️ 清除所有消費記錄</button>
-    <div style="text-align:center;padding:20px 0;color:var(--text3);font-size:12px;">存錢記帳 v2.0<br>資料儲存於裝置本地</div>
+    <div style="text-align:center;padding:20px 0;color:var(--text3);font-size:12px;">存錢記帳 v3.0<br>${user ? '資料已同步至雲端' : '資料儲存於裝置本地'}</div>
   `;
   document.getElementById('settings-content').innerHTML = html;
 }
@@ -617,7 +639,8 @@ function confirmDeleteCard(id, name) {
 }
 
 function confirmClearAllData() {
-  showDialog('清除所有資料', '這將刪除所有消費記錄，此操作無法復原。', () => {
+  const cloudMsg = typeof getCurrentUser === 'function' && getCurrentUser() ? '（包含雲端資料）' : '';
+  showDialog('清除所有資料', `這將刪除所有消費記錄${cloudMsg}，此操作無法復原。建議先備份。`, () => {
     saveExpenses([]);
     renderSettings();
     renderDetail();
@@ -625,12 +648,88 @@ function confirmClearAllData() {
   }, '清除');
 }
 
-// ===== INIT =====
-document.addEventListener('DOMContentLoaded', () => {
+// ===== AUTH HANDLERS =====
+async function handleGoogleLogin() {
+  const btn = document.getElementById('google-login-btn');
+  btn.disabled = true;
+  btn.textContent = '登入中...';
+  try {
+    await signInWithGoogle();
+    // onAuthChanged callback handles the rest
+  } catch (err) {
+    console.error('Login failed:', err);
+    showToast('登入失敗，請重試', true);
+    btn.disabled = false;
+    btn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg> 使用 Google 帳號登入';
+  }
+}
+
+function handleLogout() {
+  showDialog('登出', '登出後仍可用備份還原資料。確定要登出嗎？', async () => {
+    await firebaseSignOut();
+  }, '登出');
+}
+
+function showLoading(show) {
+  document.getElementById('loading-overlay').style.display = show ? 'flex' : 'none';
+}
+
+function handleManualSync() {
+  showLoading(true);
+  syncFromCloud().then(() => {
+    showLoading(false);
+    const activePage = document.querySelector('.page.active');
+    if (activePage) {
+      const pageId = activePage.id.replace('page-', '');
+      if (pageId === 'input') initInputPage();
+      if (pageId === 'report') renderReport();
+      if (pageId === 'detail') renderDetail();
+      if (pageId === 'settings') renderSettings();
+    }
+    showToast('資料已同步');
+  });
+}
+
+function _initApp() {
   initInputPage();
   document.getElementById('date-picker').addEventListener('change', updateBillingIndicator);
-  // Reset modal save button default
   document.getElementById('modal-save').onclick = saveEditModal;
+}
+
+// ===== INIT =====
+document.addEventListener('DOMContentLoaded', () => {
+  if (typeof initFirebase === 'function') {
+    initFirebase();
+    onAuthChanged(async (user) => {
+      if (user) {
+        showLoading(true);
+        document.getElementById('login-screen').style.display = 'none';
+        document.querySelector('.tab-bar').style.display = 'flex';
+        document.querySelectorAll('.page').forEach(p => p.style.visibility = 'visible');
+
+        await syncFromCloud();
+        showLoading(false);
+        _initApp();
+
+        // Re-render visible page
+        const activePage = document.querySelector('.page.active');
+        if (activePage) {
+          const pageId = activePage.id.replace('page-', '');
+          if (pageId === 'report') renderReport();
+          if (pageId === 'detail') renderDetail();
+          if (pageId === 'settings') renderSettings();
+        }
+      } else {
+        document.getElementById('login-screen').style.display = 'flex';
+        document.querySelector('.tab-bar').style.display = 'none';
+        document.querySelectorAll('.page').forEach(p => p.style.visibility = 'hidden');
+        showLoading(false);
+      }
+    });
+  } else {
+    // Firebase not loaded — fallback to local-only mode
+    _initApp();
+  }
 });
 
 if ('serviceWorker' in navigator) {

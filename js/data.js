@@ -47,7 +47,10 @@ function safeJSON(key, fallback) {
 
 // ===== EXPENSES CRUD =====
 function loadExpenses() { return safeJSON(DB_KEY, []); }
-function saveExpenses(data) { localStorage.setItem(DB_KEY, JSON.stringify(data)); }
+function saveExpenses(data) {
+  localStorage.setItem(DB_KEY, JSON.stringify(data));
+  if (typeof scheduleSyncToCloud === 'function') scheduleSyncToCloud();
+}
 
 function addExpense(expense) {
   const data = loadExpenses();
@@ -86,7 +89,10 @@ function deleteExpense(id) {
 
 // ===== CARDS CRUD =====
 function loadCards() { return safeJSON(CARDS_KEY, DEFAULT_CARDS); }
-function saveCards(cards) { localStorage.setItem(CARDS_KEY, JSON.stringify(cards)); }
+function saveCards(cards) {
+  localStorage.setItem(CARDS_KEY, JSON.stringify(cards));
+  if (typeof scheduleSyncToCloud === 'function') scheduleSyncToCloud();
+}
 
 function addCard(card) {
   const cards = loadCards();
@@ -140,7 +146,10 @@ function recalcExpensesForCard(cardId) {
 
 // ===== SETTINGS =====
 function loadSettings() { return safeJSON(SETTINGS_KEY, { monthlyIncome: 40000, fixedExpense: 15000 }); }
-function saveSettings(s) { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); }
+function saveSettings(s) {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+  if (typeof scheduleSyncToCloud === 'function') scheduleSyncToCloud();
+}
 
 // ===== BILLING LOGIC =====
 function getBillingInfo(dateStr, cardId) {
@@ -276,6 +285,7 @@ function importBackup(jsonStr) {
   localStorage.setItem(DB_KEY, JSON.stringify(backup.data));
   if (backup.cards) localStorage.setItem(CARDS_KEY, JSON.stringify(backup.cards));
   if (backup.settings) localStorage.setItem(SETTINGS_KEY, JSON.stringify(backup.settings));
+  if (typeof scheduleSyncToCloud === 'function') scheduleSyncToCloud();
   return backup.data.length;
 }
 
