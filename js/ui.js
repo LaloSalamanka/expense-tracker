@@ -9,6 +9,9 @@ const state = {
   detailMonth: new Date(),
   detailFilter: '全部',
   editingExpenseId: null,
+  wizardStep: 1,
+  wizardIncomeItems: [],
+  wizardFixedExpenseItems: [],
 };
 
 // ===== NAVIGATION =====
@@ -49,11 +52,13 @@ function initInputPage() {
   document.getElementById('date-picker').value = new Date().toISOString().split('T')[0];
   buildNumpad();
   updateAmountDisplay();
+  document.getElementById('payment-selector').style.display = state.inputType === 'income' ? 'none' : '';
 }
 
 function setInputType(type) {
   state.inputType = type;
   document.querySelectorAll('.type-btn').forEach(b => b.classList.toggle('active', b.dataset.type === type));
+  document.getElementById('payment-selector').style.display = type === 'income' ? 'none' : '';
   renderCategoryGrid();
   updateAmountDisplay();
   buildNumpad();
@@ -69,7 +74,7 @@ function renderPaymentChips() {
 
 function renderCategoryGrid() {
   const isIncome = state.inputType === 'income';
-  const cats = isIncome ? INCOME_CATEGORIES : CATEGORIES;
+  const cats = isIncome ? getAllIncomeCategories() : getAllExpenseCategories();
   const selected = isIncome ? state.selectedIncomeCategory : state.selectedCategory;
   document.getElementById('category-grid').innerHTML = cats.map(c =>
     `<button class="cat-btn${c.name === selected ? ' active' : ''}" data-name="${c.name}" onclick="selectCategory('${c.name}')"><span class="icon">${c.icon}</span>${c.name}</button>`
@@ -160,14 +165,15 @@ function updateBillingIndicator() {
 function submitExpense() {
   if (!state.amount || state.amount === '0') { showToast('請輸入金額', true); return; }
   const isIncome = state.inputType === 'income';
-  const entry = addExpense({
+  const entryData = {
     date: document.getElementById('date-picker').value,
     amount: Number(state.amount),
-    cardId: state.selectedCardId,
     category: isIncome ? state.selectedIncomeCategory : state.selectedCategory,
     note: document.getElementById('note-input').value.trim(),
     type: isIncome ? 'income' : 'expense',
-  });
+  };
+  if (!isIncome) entryData.cardId = state.selectedCardId;
+  const entry = addExpense(entryData);
   state.amount = '';
   document.getElementById('note-input').value = '';
   updateAmountDisplay();
@@ -328,18 +334,19 @@ function renderDetail() {
 
     const itemsHtml = g.items.map(e => {
       const isIncome = (e.type || 'expense') === 'income';
-      const allCats = [...CATEGORIES, ...INCOME_CATEGORIES];
+      const allCats = [...getAllExpenseCategories(), ...getAllIncomeCategories()];
       const cat = allCats.find(c => c.name === e.category);
       const icon = cat ? cat.icon : '📦';
       const tag = getBillingDisplayTag(e, state.detailMonth);
       const amountHtml = isIncome
         ? `<div class="tx-amount income">+$${e.amount.toLocaleString()}</div>`
         : `<div class="tx-amount">-$${e.amount.toLocaleString()}</div>`;
+      const cardSub = isIncome ? '' : `<span style="color:${getCardColor(e.cardId)}">● ${getCardName(e.cardId).replace('信用卡', '')}</span>`;
       return `<div class="tx-item" data-id="${e.id}">
         <div class="tx-icon">${icon}</div>
         <div class="tx-info" onclick="openEditModal('${e.id}')">
           <div class="tx-title">${e.note || e.category} <span class="billing-tag ${tag.cls}">${tag.label}</span></div>
-          <div class="tx-sub"><span style="color:${getCardColor(e.cardId)}">● ${getCardName(e.cardId).replace('信用卡', '')}</span>${e.billingMonth ? `<span>帳單 ${e.billingMonth}</span>` : ''}</div>
+          <div class="tx-sub">${cardSub}${e.billingMonth ? `<span>帳單 ${e.billingMonth}</span>` : ''}</div>
         </div>
         <div class="tx-right">
           ${amountHtml}
@@ -378,7 +385,12 @@ function openEditModal(id) {
   state.editingExpenseId = id;
   const cards = loadCards();
   const isIncome = (expense.type || 'expense') === 'income';
-  const cats = isIncome ? INCOME_CATEGORIES : CATEGORIES;
+  const cats = isIncome ? getAllIncomeCategories() : getAllExpenseCategories();
+  const cardFieldHtml = isIncome ? '' : `
+    <div class="modal-field">
+      <label>付款方式</label>
+      <select id="edit-card" class="modal-input">${cards.map(c => `<option value="${c.id}"${c.id === expense.cardId ? ' selected' : ''}>${c.name}</option>`).join('')}</select>
+    </div>`;
 
   document.getElementById('modal-title').textContent = isIncome ? '編輯收入' : '編輯消費';
   document.getElementById('modal-body').innerHTML = `
@@ -390,10 +402,7 @@ function openEditModal(id) {
       <label>金額</label>
       <input type="number" id="edit-amount" value="${expense.amount}" class="modal-input" inputmode="numeric">
     </div>
-    <div class="modal-field">
-      <label>付款方式</label>
-      <select id="edit-card" class="modal-input">${cards.map(c => `<option value="${c.id}"${c.id === expense.cardId ? ' selected' : ''}>${c.name}</option>`).join('')}</select>
-    </div>
+    ${cardFieldHtml}
     <div class="modal-field">
       <label>分類</label>
       <select id="edit-category" class="modal-input">${cats.map(c => `<option${c.name === expense.category ? ' selected' : ''}>${c.name}</option>`).join('')}</select>
@@ -411,13 +420,16 @@ function openEditModal(id) {
 
 function saveEditModal() {
   if (!state.editingExpenseId) return;
-  const updated = updateExpense(state.editingExpenseId, {
+  const expense = loadExpenses().find(e => e.id === state.editingExpenseId);
+  const isIncome = expense && (expense.type || 'expense') === 'income';
+  const updates = {
     date: document.getElementById('edit-date').value,
     amount: Number(document.getElementById('edit-amount').value),
-    cardId: document.getElementById('edit-card').value,
     category: document.getElementById('edit-category').value,
     note: document.getElementById('edit-note').value.trim(),
-  });
+  };
+  if (!isIncome) updates.cardId = document.getElementById('edit-card').value;
+  const updated = updateExpense(state.editingExpenseId, updates);
   closeModal();
   if (updated) { renderDetail(); showToast('已更新'); }
 }
@@ -433,6 +445,13 @@ function renderSettings() {
   const cards = loadCards();
   const stats = getDataStats();
   const user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+  const incomeItems = settings.incomeItems || [];
+  const fixedExpenseItems = settings.fixedExpenseItems || [];
+  const incomeTotal = incomeItems.reduce((s, i) => s + (i.amount || 0), 0);
+  const expenseTotal = fixedExpenseItems.reduce((s, i) => s + (i.amount || 0), 0);
+  const netIncome = incomeTotal - expenseTotal;
+  const customExpCats = settings.customExpenseCategories || [];
+  const customIncCats = settings.customIncomeCategories || [];
 
   let html = '';
   if (user) {
@@ -464,14 +483,54 @@ function renderSettings() {
     </div>`;
   }
 
+  // Income items
   html += `
-    <div class="settings-group-title">收入設定</div>
+    <div class="settings-group-title">每月收入</div>
     <div class="settings-group">
-      <div class="setting-row"><span class="setting-label">每月基本收入</span><input class="setting-input" type="number" value="${settings.monthlyIncome}" onchange="saveSetting('monthlyIncome',this.value)"></div>
-      <div class="setting-row"><span class="setting-label">每月固定支出</span><input class="setting-input" type="number" value="${settings.fixedExpense}" onchange="saveSetting('fixedExpense',this.value)"></div>
-      <div class="setting-row"><span class="setting-label">每月可用餘額</span><span class="setting-value">$${(settings.monthlyIncome - settings.fixedExpense).toLocaleString()}</span></div>
-    </div>
+      ${incomeItems.map(item => `
+        <div class="setting-row">
+          <span class="setting-label">${item.label}</span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="setting-value">$${item.amount.toLocaleString()}</span>
+            <button class="icon-btn" onclick="openItemEditor('income','${item.id}')">✏️</button>
+            ${incomeItems.length > 1 ? `<button class="icon-btn" onclick="confirmDeleteItem('income','${item.id}','${item.label}')">🗑️</button>` : ''}
+          </div>
+        </div>
+      `).join('')}
+      <div class="setting-row"><span class="setting-label" style="font-weight:600">合計</span><span class="setting-value" style="font-weight:600">$${incomeTotal.toLocaleString()}</span></div>
+      <div class="setting-row" style="justify-content:center">
+        <button class="add-card-btn" onclick="openItemEditor('income')">＋ 新增收入項目</button>
+      </div>
+    </div>`;
 
+  // Fixed expense items
+  html += `
+    <div class="settings-group-title">每月固定支出</div>
+    <div class="settings-group">
+      ${fixedExpenseItems.map(item => `
+        <div class="setting-row">
+          <span class="setting-label">${item.label}</span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="setting-value" style="color:var(--red)">$${item.amount.toLocaleString()}</span>
+            <button class="icon-btn" onclick="openItemEditor('fixedExpense','${item.id}')">✏️</button>
+            ${fixedExpenseItems.length > 1 ? `<button class="icon-btn" onclick="confirmDeleteItem('fixedExpense','${item.id}','${item.label}')">🗑️</button>` : ''}
+          </div>
+        </div>
+      `).join('')}
+      <div class="setting-row"><span class="setting-label" style="font-weight:600">合計</span><span class="setting-value" style="color:var(--red);font-weight:600">$${expenseTotal.toLocaleString()}</span></div>
+      <div class="setting-row" style="justify-content:center">
+        <button class="add-card-btn" onclick="openItemEditor('fixedExpense')">＋ 新增固定支出</button>
+      </div>
+    </div>`;
+
+  // Net income summary
+  html += `
+    <div class="settings-group">
+      <div class="setting-row"><span class="setting-label" style="font-weight:700">🔄 每月可用餘額</span><span class="setting-value" style="font-weight:700;color:var(--blue)">$${netIncome.toLocaleString()}</span></div>
+    </div>`;
+
+  // Credit cards
+  html += `
     <div class="settings-group-title">信用卡管理</div>
     <div class="settings-group">
       ${cards.filter(c => !c.isSystem).map(c => `
@@ -490,8 +549,34 @@ function renderSettings() {
       <div class="setting-row" style="justify-content:center">
         <button class="add-card-btn" onclick="openCardEditor()">＋ 新增信用卡</button>
       </div>
-    </div>
+    </div>`;
 
+  // Custom categories
+  html += `
+    <div class="settings-group-title">自訂分類</div>
+    <div class="settings-group">
+      <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:8px">
+        <div style="font-size:13px;font-weight:600;color:var(--text2)">支出分類</div>
+        <div class="custom-cat-list">
+          ${CATEGORIES.map(c => `<span class="custom-cat-chip default">${c.icon} ${c.name}</span>`).join('')}
+          ${customExpCats.map(c => `<span class="custom-cat-chip editable" onclick="openCategoryEditor('expense','${c.name}')">${c.icon} ${c.name} ✏️</span>`).join('')}
+        </div>
+        <button class="add-card-btn" onclick="openCategoryEditor('expense')" style="align-self:flex-start">＋ 新增支出分類</button>
+      </div>
+    </div>
+    <div class="settings-group" style="margin-top:-8px">
+      <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:8px">
+        <div style="font-size:13px;font-weight:600;color:var(--text2)">收入分類</div>
+        <div class="custom-cat-list">
+          ${INCOME_CATEGORIES.map(c => `<span class="custom-cat-chip default">${c.icon} ${c.name}</span>`).join('')}
+          ${customIncCats.map(c => `<span class="custom-cat-chip editable" onclick="openCategoryEditor('income','${c.name}')">${c.icon} ${c.name} ✏️</span>`).join('')}
+        </div>
+        <button class="add-card-btn" onclick="openCategoryEditor('income')" style="align-self:flex-start">＋ 新增收入分類</button>
+      </div>
+    </div>`;
+
+  // Backup & restore
+  html += `
     <div class="settings-group-title">備份與還原</div>
     <div class="settings-group">
       <div class="setting-row" style="justify-content:center;gap:10px;flex-wrap:wrap">
@@ -531,11 +616,134 @@ function renderSettings() {
   document.getElementById('settings-content').innerHTML = html;
 }
 
-function saveSetting(key, val) {
-  const s = loadSettings();
-  s[key] = Number(val);
-  saveSettings(s);
+// ===== ITEM EDITOR (income/fixed expense) =====
+function openItemEditor(type, id) {
+  const settings = loadSettings();
+  const key = type === 'income' ? 'incomeItems' : 'fixedExpenseItems';
+  const arr = settings[key] || [];
+  const item = id ? arr.find(i => i.id === id) : null;
+  const isEdit = !!item;
+  const title = isEdit
+    ? (type === 'income' ? '編輯收入項目' : '編輯固定支出')
+    : (type === 'income' ? '新增收入項目' : '新增固定支出');
+
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML = `
+    <div class="modal-field">
+      <label>名稱</label>
+      <input type="text" id="item-edit-label" value="${item ? item.label : ''}" class="modal-input" placeholder="${type === 'income' ? '例：薪資' : '例：房租'}" maxlength="10">
+    </div>
+    <div class="modal-field">
+      <label>每月金額</label>
+      <input type="number" id="item-edit-amount" value="${item ? item.amount : ''}" class="modal-input" placeholder="0" inputmode="numeric">
+    </div>
+  `;
+  const saveBtn = document.getElementById('modal-save');
+  saveBtn.textContent = isEdit ? '儲存' : '新增';
+  saveBtn.onclick = () => saveItemEditor(type, id);
+  document.getElementById('modal-overlay').classList.add('show');
+}
+
+function saveItemEditor(type, id) {
+  const label = document.getElementById('item-edit-label').value.trim();
+  const amount = Number(document.getElementById('item-edit-amount').value) || 0;
+  if (!label) { showToast('請輸入名稱', true); return; }
+
+  const settings = loadSettings();
+  const key = type === 'income' ? 'incomeItems' : 'fixedExpenseItems';
+  if (!settings[key]) settings[key] = [];
+
+  if (id) {
+    const idx = settings[key].findIndex(i => i.id === id);
+    if (idx !== -1) settings[key][idx] = { ...settings[key][idx], label, amount };
+  } else {
+    settings[key].push({ id: generateId(), label, amount });
+  }
+
+  saveSettings(settings);
+  closeModal();
   renderSettings();
+  showToast(id ? '已更新' : '已新增');
+}
+
+function confirmDeleteItem(type, id, label) {
+  showDialog('刪除項目', `確定要刪除「${label}」嗎？`, () => {
+    const settings = loadSettings();
+    const key = type === 'income' ? 'incomeItems' : 'fixedExpenseItems';
+    settings[key] = (settings[key] || []).filter(i => i.id !== id);
+    saveSettings(settings);
+    renderSettings();
+    showToast('已刪除');
+  }, '刪除');
+}
+
+// ===== CATEGORY EDITOR =====
+function openCategoryEditor(type, existingName) {
+  const s = loadSettings();
+  const key = type === 'expense' ? 'customExpenseCategories' : 'customIncomeCategories';
+  const existing = existingName ? (s[key] || []).find(c => c.name === existingName) : null;
+  const isEdit = !!existing;
+  const title = isEdit ? '編輯自訂分類' : '新增自訂分類';
+
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML = `
+    <div class="modal-field">
+      <label>分類名稱</label>
+      <input type="text" id="cat-edit-name" value="${existing ? existing.name : ''}" class="modal-input" placeholder="例：寵物" maxlength="6">
+    </div>
+    <div class="modal-field">
+      <label>圖示</label>
+      <div class="icon-picker">
+        ${CATEGORY_ICONS.map(icon => `<button class="icon-pick-btn${existing && existing.icon === icon ? ' active' : ''}" data-icon="${icon}" onclick="pickCatIcon(this)">${icon}</button>`).join('')}
+      </div>
+    </div>
+    ${isEdit ? `<button class="action-btn danger" style="margin-top:8px" onclick="confirmDeleteCategory('${type}','${existingName}')">刪除此分類</button>` : ''}
+  `;
+  const saveBtn = document.getElementById('modal-save');
+  saveBtn.textContent = isEdit ? '儲存' : '新增';
+  saveBtn.onclick = () => saveCategoryEditor(type, existingName);
+  document.getElementById('modal-overlay').classList.add('show');
+}
+
+function pickCatIcon(el) {
+  document.querySelectorAll('.icon-pick-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function saveCategoryEditor(type, oldName) {
+  const name = document.getElementById('cat-edit-name').value.trim();
+  const iconEl = document.querySelector('.icon-pick-btn.active');
+  const icon = iconEl ? iconEl.dataset.icon : '📦';
+  if (!name) { showToast('請輸入分類名稱', true); return; }
+  const builtIn = type === 'expense' ? CATEGORIES : INCOME_CATEGORIES;
+  if (builtIn.some(c => c.name === name) && name !== oldName) {
+    showToast('此名稱與內建分類重複', true); return;
+  }
+  if (oldName) {
+    updateCustomCategory(type, oldName, name, icon);
+    showToast('已更新');
+  } else {
+    const s = loadSettings();
+    const key = type === 'expense' ? 'customExpenseCategories' : 'customIncomeCategories';
+    if ((s[key] || []).some(c => c.name === name)) {
+      showToast('已有相同名稱的自訂分類', true); return;
+    }
+    addCustomCategory(type, name, icon);
+    showToast('已新增');
+  }
+  closeModal();
+  renderSettings();
+  renderCategoryGrid();
+}
+
+function confirmDeleteCategory(type, name) {
+  closeModal();
+  showDialog('刪除分類', `確定要刪除「${name}」嗎？已使用此分類的記錄不會被刪除。`, () => {
+    deleteCustomCategory(type, name);
+    renderSettings();
+    renderCategoryGrid();
+    showToast('已刪除');
+  }, '刪除');
 }
 
 function toggleAutoBackup(on) {
@@ -576,6 +784,7 @@ function doRestore(input) {
   reader.onload = () => {
     try {
       const count = importBackup(reader.result);
+      runMigrations();
       showToast(`已還原 ${count} 筆記錄`);
       renderSettings();
     } catch (e) {
@@ -712,6 +921,11 @@ async function handleGoogleLogin() {
 
 function skipLogin() {
   document.getElementById('login-screen').style.display = 'none';
+  runMigrations();
+  if (!isSetupCompleted()) {
+    showSetupWizard();
+    return;
+  }
   document.querySelector('.tab-bar').style.display = 'flex';
   document.querySelectorAll('.page').forEach(p => p.style.visibility = 'visible');
   _initApp();
@@ -757,7 +971,183 @@ function handleManualSync() {
   });
 }
 
+// ===== SETUP WIZARD =====
+function showSetupWizard() {
+  document.getElementById('setup-wizard').style.display = 'flex';
+  document.querySelector('.tab-bar').style.display = 'none';
+  document.querySelectorAll('.page').forEach(p => p.style.visibility = 'hidden');
+  state.wizardStep = 1;
+  state.wizardIncomeItems = [{ id: generateId(), label: '薪資', amount: 0 }];
+  state.wizardFixedExpenseItems = [
+    { id: generateId(), label: '房租', amount: 0 },
+    { id: generateId(), label: '保險費', amount: 0 },
+    { id: generateId(), label: '水電瓦斯', amount: 0 },
+  ];
+  renderWizardStep();
+}
+
+function renderWizardStep() {
+  document.querySelectorAll('.setup-step').forEach(el => {
+    const step = Number(el.dataset.step);
+    el.classList.toggle('active', step === state.wizardStep);
+    el.classList.toggle('done', step < state.wizardStep);
+  });
+  const body = document.getElementById('setup-body');
+  const footer = document.getElementById('setup-footer');
+  if (state.wizardStep === 1) renderWizardIncomeStep(body, footer);
+  else if (state.wizardStep === 2) renderWizardExpenseStep(body, footer);
+  else if (state.wizardStep === 3) renderWizardCardStep(body, footer);
+}
+
+function renderWizardIncomeStep(body, footer) {
+  const total = state.wizardIncomeItems.reduce((s, i) => s + (i.amount || 0), 0);
+  body.innerHTML = `
+    <div class="setup-title">💰 每月收入</div>
+    <div class="setup-desc">設定你的固定收入項目（可以先填 $0，之後再改）</div>
+    <div class="setup-items">
+      ${state.wizardIncomeItems.map((item, idx) => `
+        <div class="setup-item-row">
+          <input type="text" class="setup-item-label" value="${item.label}" placeholder="收入名稱" maxlength="10" onchange="updateWizardItem('income',${idx},'label',this.value)">
+          <input type="number" class="setup-item-amount" value="${item.amount || ''}" placeholder="0" inputmode="numeric" onchange="updateWizardItem('income',${idx},'amount',Number(this.value)||0)">
+          ${state.wizardIncomeItems.length > 1 ? `<button class="setup-item-del" onclick="removeWizardItem('income',${idx})">✕</button>` : ''}
+        </div>
+      `).join('')}
+    </div>
+    <button class="setup-add-btn" onclick="addWizardItem('income')">＋ 新增收入項目</button>
+    <div class="setup-total">合計：$${total.toLocaleString()}/月</div>
+  `;
+  footer.innerHTML = `<button class="setup-next-btn" onclick="wizardNext()">下一步 →</button>`;
+}
+
+function renderWizardExpenseStep(body, footer) {
+  const total = state.wizardFixedExpenseItems.reduce((s, i) => s + (i.amount || 0), 0);
+  body.innerHTML = `
+    <div class="setup-title">🏠 每月固定支出</div>
+    <div class="setup-desc">房租、保險、水電等每月固定要花的錢</div>
+    <div class="setup-items">
+      ${state.wizardFixedExpenseItems.map((item, idx) => `
+        <div class="setup-item-row">
+          <input type="text" class="setup-item-label" value="${item.label}" placeholder="支出名稱" maxlength="10" onchange="updateWizardItem('expense',${idx},'label',this.value)">
+          <input type="number" class="setup-item-amount" value="${item.amount || ''}" placeholder="0" inputmode="numeric" onchange="updateWizardItem('expense',${idx},'amount',Number(this.value)||0)">
+          ${state.wizardFixedExpenseItems.length > 1 ? `<button class="setup-item-del" onclick="removeWizardItem('expense',${idx})">✕</button>` : ''}
+        </div>
+      `).join('')}
+    </div>
+    <button class="setup-add-btn" onclick="addWizardItem('expense')">＋ 新增固定支出</button>
+    <div class="setup-total">合計：$${total.toLocaleString()}/月</div>
+  `;
+  footer.innerHTML = `
+    <button class="setup-back-btn" onclick="wizardBack()">← 上一步</button>
+    <button class="setup-next-btn" onclick="wizardNext()">下一步 →</button>
+  `;
+}
+
+function renderWizardCardStep(body, footer) {
+  const cards = loadCards().filter(c => !c.isSystem);
+  const incTotal = state.wizardIncomeItems.reduce((s, i) => s + (i.amount || 0), 0);
+  const expTotal = state.wizardFixedExpenseItems.reduce((s, i) => s + (i.amount || 0), 0);
+
+  body.innerHTML = `
+    <div class="setup-title">💳 信用卡</div>
+    <div class="setup-desc">確認你的信用卡設定，或選擇僅使用現金記帳。</div>
+    <div class="setup-cards-list">
+      ${cards.length ? cards.map(c => `
+        <div class="setup-card-item">
+          <span class="card-dot" style="background:${c.color}"></span>
+          <span>${c.name}</span>
+          <span class="card-detail">結帳 ${c.billDay}號 / 繳款 次月${c.dueDay}號</span>
+        </div>
+      `).join('') : '<div class="setup-no-cards">尚未設定信用卡（僅使用現金記帳）</div>'}
+    </div>
+    <div style="display:flex;gap:8px;justify-content:center;margin-top:12px">
+      <button class="add-card-btn" onclick="openCardEditorFromWizard()">＋ 新增信用卡</button>
+    </div>
+    <div class="setup-summary">
+      <div class="setup-summary-title">📊 每月概覽</div>
+      <div class="setup-summary-row"><span>收入合計</span><span>$${incTotal.toLocaleString()}</span></div>
+      <div class="setup-summary-row"><span>固定支出</span><span>-$${expTotal.toLocaleString()}</span></div>
+      <div class="setup-summary-row total"><span>每月可用餘額</span><span>$${(incTotal - expTotal).toLocaleString()}</span></div>
+    </div>
+  `;
+  footer.innerHTML = `
+    <button class="setup-back-btn" onclick="wizardBack()">← 上一步</button>
+    <button class="setup-finish-btn" onclick="wizardFinish()">開始記帳 🎉</button>
+  `;
+}
+
+function updateWizardItem(type, idx, field, value) {
+  const arr = type === 'income' ? state.wizardIncomeItems : state.wizardFixedExpenseItems;
+  if (arr[idx]) arr[idx][field] = value;
+  const total = arr.reduce((s, i) => s + (i.amount || 0), 0);
+  const totalEl = document.querySelector('.setup-total');
+  if (totalEl) totalEl.textContent = `合計：$${total.toLocaleString()}/月`;
+}
+
+function addWizardItem(type) {
+  const arr = type === 'income' ? state.wizardIncomeItems : state.wizardFixedExpenseItems;
+  arr.push({ id: generateId(), label: '', amount: 0 });
+  renderWizardStep();
+}
+
+function removeWizardItem(type, idx) {
+  const arr = type === 'income' ? state.wizardIncomeItems : state.wizardFixedExpenseItems;
+  arr.splice(idx, 1);
+  renderWizardStep();
+}
+
+function wizardNext() {
+  if (state.wizardStep === 1) {
+    if (!state.wizardIncomeItems.some(i => i.label.trim())) { showToast('請至少填寫一個收入名稱', true); return; }
+  }
+  if (state.wizardStep === 2) {
+    if (!state.wizardFixedExpenseItems.some(i => i.label.trim())) { showToast('請至少填寫一個固定支出名稱', true); return; }
+  }
+  state.wizardStep++;
+  renderWizardStep();
+}
+
+function wizardBack() {
+  if (state.wizardStep > 1) { state.wizardStep--; renderWizardStep(); }
+}
+
+function wizardFinish() {
+  const incomeItems = state.wizardIncomeItems
+    .filter(i => i.label.trim())
+    .map(i => ({ id: i.id, label: i.label.trim(), amount: i.amount || 0 }));
+  const fixedExpenseItems = state.wizardFixedExpenseItems
+    .filter(i => i.label.trim())
+    .map(i => ({ id: i.id, label: i.label.trim(), amount: i.amount || 0 }));
+
+  const s = loadSettings();
+  s.setupCompleted = true;
+  s.incomeItems = incomeItems;
+  s.fixedExpenseItems = fixedExpenseItems;
+  if (!s.customExpenseCategories) s.customExpenseCategories = [];
+  if (!s.customIncomeCategories) s.customIncomeCategories = [];
+  saveSettings(s);
+
+  document.getElementById('setup-wizard').style.display = 'none';
+  document.querySelector('.tab-bar').style.display = 'flex';
+  document.querySelectorAll('.page').forEach(p => p.style.visibility = 'visible');
+  _initApp();
+}
+
+function openCardEditorFromWizard() {
+  const origClose = closeModal;
+  openCardEditor();
+  closeModal = function() {
+    origClose();
+    closeModal = origClose;
+    renderWizardStep();
+  };
+}
+
 function _initApp() {
+  runMigrations();
+  if (!isSetupCompleted()) {
+    showSetupWizard();
+    return;
+  }
   initInputPage();
   document.getElementById('date-picker').addEventListener('change', updateBillingIndicator);
   document.getElementById('modal-save').onclick = saveEditModal;
@@ -782,15 +1172,24 @@ document.addEventListener('DOMContentLoaded', () => {
         // User signed in (from login screen or settings)
         showLoading(true);
         document.getElementById('login-screen').style.display = 'none';
-        document.querySelector('.tab-bar').style.display = 'flex';
-        document.querySelectorAll('.page').forEach(p => p.style.visibility = 'visible');
 
         await syncFromCloud();
+        runMigrations();
         showLoading(false);
 
         if (!_appInitialized) {
-          _initApp();
-          _appInitialized = true;
+          if (!isSetupCompleted()) {
+            showSetupWizard();
+            _appInitialized = true;
+          } else {
+            document.querySelector('.tab-bar').style.display = 'flex';
+            document.querySelectorAll('.page').forEach(p => p.style.visibility = 'visible');
+            _initApp();
+            _appInitialized = true;
+          }
+        } else {
+          document.querySelector('.tab-bar').style.display = 'flex';
+          document.querySelectorAll('.page').forEach(p => p.style.visibility = 'visible');
         }
 
         // Re-render visible page

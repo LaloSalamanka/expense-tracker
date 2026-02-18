@@ -3,7 +3,7 @@ const DB_KEY = 'expense_tracker_data_v3';
 const CARDS_KEY = 'expense_tracker_cards_v3';
 const SETTINGS_KEY = 'expense_tracker_settings_v3';
 
-// ===== CATEGORIES (fixed) =====
+// ===== CATEGORIES (built-in, non-deletable) =====
 const CATEGORIES = [
   { name: '餐飲', icon: '🍜' },
   { name: '交通', icon: '⛽' },
@@ -22,6 +22,11 @@ const INCOME_CATEGORIES = [
   { name: '副業', icon: '💼' },
   { name: '利息', icon: '🏦' },
   { name: '其他收入', icon: '💵' },
+];
+
+const CATEGORY_ICONS = [
+  '🐱','🐶','🎵','🎮','🏋️','✈️','📚','🎨','👶','💅',
+  '🚗','🏫','📱','🎁','☕','🍰','💊','🔧','📈','🏖️',
 ];
 
 // ===== DEFAULT CARDS =====
@@ -59,6 +64,7 @@ function addExpense(expense) {
     ? { billingStatus: '即時收入', billingMonth: null, dueDate: null }
     : getBillingInfo(expense.date, expense.cardId);
   const entry = { id: generateId(), type: isIncome ? 'income' : 'expense', ...expense, ...billing, createdAt: Date.now() };
+  if (isIncome) delete entry.cardId;
   data.push(entry);
   saveExpenses(data);
   return entry;
@@ -145,10 +151,97 @@ function recalcExpensesForCard(cardId) {
 }
 
 // ===== SETTINGS =====
-function loadSettings() { return safeJSON(SETTINGS_KEY, { monthlyIncome: 40000, fixedExpense: 15000 }); }
+function loadSettings() {
+  return safeJSON(SETTINGS_KEY, {
+    setupCompleted: false,
+    incomeItems: [],
+    fixedExpenseItems: [],
+    customExpenseCategories: [],
+    customIncomeCategories: [],
+  });
+}
 function saveSettings(s) {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
   if (typeof scheduleSyncToCloud === 'function') scheduleSyncToCloud();
+}
+
+// ===== SETTINGS MIGRATION =====
+function migrateSettings() {
+  const raw = safeJSON(SETTINGS_KEY, null);
+  if (!raw) return;
+  if (Array.isArray(raw.incomeItems)) return; // already migrated
+  const migrated = {
+    setupCompleted: true,
+    incomeItems: [{ id: generateId(), label: '薪資', amount: raw.monthlyIncome || 0 }],
+    fixedExpenseItems: [{ id: generateId(), label: '固定支出', amount: raw.fixedExpense || 0 }],
+    customExpenseCategories: raw.customExpenseCategories || [],
+    customIncomeCategories: raw.customIncomeCategories || [],
+  };
+  saveSettings(migrated);
+}
+
+function runMigrations() {
+  migrateSettings();
+  const s = loadSettings();
+  if (!s.setupCompleted) {
+    const hasData = loadExpenses().length > 0;
+    const hasCards = loadCards().some(c => !c.isSystem);
+    if (hasData || hasCards) {
+      s.setupCompleted = true;
+      saveSettings(s);
+    }
+  }
+}
+
+// ===== COMPUTED TOTALS =====
+function getTotalMonthlyIncome() {
+  return (loadSettings().incomeItems || []).reduce((sum, i) => sum + (i.amount || 0), 0);
+}
+function getTotalFixedExpense() {
+  return (loadSettings().fixedExpenseItems || []).reduce((sum, i) => sum + (i.amount || 0), 0);
+}
+function getNetIncome() {
+  return getTotalMonthlyIncome() - getTotalFixedExpense();
+}
+function isSetupCompleted() {
+  return !!loadSettings().setupCompleted;
+}
+
+// ===== CUSTOM CATEGORIES =====
+function getAllExpenseCategories() {
+  return [...CATEGORIES, ...(loadSettings().customExpenseCategories || [])];
+}
+function getAllIncomeCategories() {
+  return [...INCOME_CATEGORIES, ...(loadSettings().customIncomeCategories || [])];
+}
+function addCustomCategory(type, name, icon) {
+  const s = loadSettings();
+  const key = type === 'expense' ? 'customExpenseCategories' : 'customIncomeCategories';
+  if (!s[key]) s[key] = [];
+  s[key].push({ name, icon });
+  saveSettings(s);
+}
+function updateCustomCategory(type, oldName, newName, newIcon) {
+  const s = loadSettings();
+  const key = type === 'expense' ? 'customExpenseCategories' : 'customIncomeCategories';
+  const arr = s[key] || [];
+  const idx = arr.findIndex(c => c.name === oldName);
+  if (idx !== -1) {
+    arr[idx] = { name: newName, icon: newIcon };
+    saveSettings(s);
+    if (oldName !== newName) {
+      const data = loadExpenses();
+      let changed = false;
+      data.forEach(e => { if (e.category === oldName) { e.category = newName; changed = true; } });
+      if (changed) saveExpenses(data);
+    }
+  }
+}
+function deleteCustomCategory(type, name) {
+  const s = loadSettings();
+  const key = type === 'expense' ? 'customExpenseCategories' : 'customIncomeCategories';
+  s[key] = (s[key] || []).filter(c => c.name !== name);
+  saveSettings(s);
 }
 
 // ===== BILLING LOGIC =====
@@ -192,8 +285,7 @@ function getReportData(year, month) {
   const prevYear = month === 0 ? year - 1 : year;
   const prevMonthStr = `${prevYear}/${String(prevMonth + 1).padStart(2, '0')}`;
   const allData = loadExpenses();
-  const settings = loadSettings();
-  const netIncome = settings.monthlyIncome - settings.fixedExpense;
+  const netIncome = getNetIncome();
   const monthExpenses = getMonthExpenses(year, month);
 
   // Bills with billingMonth = this month → paid NEXT month
@@ -243,7 +335,6 @@ function exportMonthCSV(year, month) {
   const data = getMonthExpenses(year, month);
   if (!data.length) return null;
   const monthStr = `${year}_${String(month + 1).padStart(2, '0')}`;
-  const settings = loadSettings();
   const report = getReportData(year, month);
 
   let csv = '\ufeff';  // BOM for Excel
@@ -253,7 +344,8 @@ function exportMonthCSV(year, month) {
     const isIncome = (e.type || 'expense') === 'income';
     const typeLabel = isIncome ? '收入' : '支出';
     const amtStr = isIncome ? `+${e.amount}` : `${e.amount}`;
-    csv += `${e.date},${typeLabel},${e.category},${(e.note || '').replace(/,/g, '，')},${amtStr},${getCardName(e.cardId)},${e.billingStatus},${e.billingMonth || ''},${e.dueDate || ''}\n`;
+    const cardLabel = isIncome ? '' : getCardName(e.cardId);
+    csv += `${e.date},${typeLabel},${e.category},${(e.note || '').replace(/,/g, '，')},${amtStr},${cardLabel},${e.billingStatus},${e.billingMonth || ''},${e.dueDate || ''}\n`;
   });
 
   csv += `\n--- 月度摘要 ---\n`;
