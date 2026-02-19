@@ -487,6 +487,27 @@ select.modal-input { cursor:pointer; }
 @keyframes spin { to { transform:rotate(360deg); } }
 .loading-text { font-size:14px; color:var(--text2); font-weight:500; }
 
+/* ===== Settings Help Bubble ===== */
+.settings-help-bubble {
+  margin:0 0 16px; padding:0;
+  background:var(--blue-dim); border:1px solid rgba(59,130,246,.2);
+  border-radius:var(--radius-sm); overflow:hidden;
+}
+.help-bubble-header {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:12px 16px; cursor:pointer; font-size:14px; font-weight:600;
+  color:var(--blue);
+}
+.help-bubble-toggle { font-size:11px; transition:transform .2s; }
+.help-bubble-body {
+  display:none; padding:0 16px 14px;
+}
+.help-item {
+  font-size:13px; color:var(--text2); line-height:1.6;
+  padding:4px 0;
+}
+.help-item b { color:var(--text); font-weight:600; }
+
 /* ===== Setup Wizard ===== */
 .setup-wizard {
   position:fixed; inset:0; z-index:150;

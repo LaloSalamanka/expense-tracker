@@ -32,10 +32,6 @@ const CATEGORY_ICONS = [
 // ===== DEFAULT CARDS =====
 const DEFAULT_CARDS = [
   { id: 'cash', name: '現金花費', billDay: 0, dueDay: 0, color: '#27ae60', isSystem: true },
-  { id: 'cathay', name: '國泰信用卡', billDay: 21, dueDay: 7, color: '#e74c3c', isSystem: false },
-  { id: 'fubon', name: '富邦信用卡', billDay: 20, dueDay: 5, color: '#2980b9', isSystem: false },
-  { id: 'dbs', name: '星展信用卡', billDay: 21, dueDay: 8, color: '#e67e22', isSystem: false },
-  { id: 'union', name: '聯邦信用卡', billDay: 19, dueDay: 3, color: '#8e44ad', isSystem: false },
 ];
 
 const CARD_COLORS = ['#e74c3c','#2980b9','#e67e22','#8e44ad','#16a085','#d35400','#2c3e50','#c0392b','#7f8c8d','#f39c12'];

@@ -483,6 +483,21 @@ function renderSettings() {
     </div>`;
   }
 
+  // Help bubble
+  html += `
+    <div class="settings-help-bubble" id="settings-help">
+      <div class="help-bubble-header" onclick="toggleHelpBubble()">
+        <span>💡 設定說明</span>
+        <span class="help-bubble-toggle" id="help-toggle">▼</span>
+      </div>
+      <div class="help-bubble-body" id="help-body">
+        <div class="help-item"><b>每月收入</b>：設定薪資、接案等固定收入細項</div>
+        <div class="help-item"><b>每月固定支出</b>：設定房租、保險等每月固定花費</div>
+        <div class="help-item"><b>信用卡管理</b>：新增信用卡並設定結帳日與繳款日，系統會自動計算帳單歸屬月份</div>
+        <div class="help-item"><b>自訂分類</b>：新增支出或收入的自訂類別標籤，記帳時可直接選用</div>
+      </div>
+    </div>`;
+
   // Income items
   html += `
     <div class="settings-group-title">每月收入</div>
@@ -744,6 +759,14 @@ function confirmDeleteCategory(type, name) {
     renderCategoryGrid();
     showToast('已刪除');
   }, '刪除');
+}
+
+function toggleHelpBubble() {
+  const body = document.getElementById('help-body');
+  const toggle = document.getElementById('help-toggle');
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  toggle.textContent = isOpen ? '▼' : '▲';
 }
 
 function toggleAutoBackup(on) {
