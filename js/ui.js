@@ -76,9 +76,10 @@ function renderCategoryGrid() {
   const isIncome = state.inputType === 'income';
   const cats = isIncome ? getAllIncomeCategories() : getAllExpenseCategories();
   const selected = isIncome ? state.selectedIncomeCategory : state.selectedCategory;
+  const type = isIncome ? 'income' : 'expense';
   document.getElementById('category-grid').innerHTML = cats.map(c =>
     `<button class="cat-btn${c.name === selected ? ' active' : ''}" data-name="${c.name}" onclick="selectCategory('${c.name}')"><span class="icon">${c.icon}</span>${c.name}</button>`
-  ).join('');
+  ).join('') + `<button class="cat-btn cat-add-btn" onclick="openCategoryEditor('${type}')"><span class="icon">＋</span>新增</button>`;
 }
 
 function selectCard(id) {

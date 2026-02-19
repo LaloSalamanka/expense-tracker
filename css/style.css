@@ -110,6 +110,8 @@ html, body {
 }
 .cat-btn .icon { font-size:22px; }
 .cat-btn.active { border-color:var(--accent); color:var(--accent); background:var(--accent-dim); }
+.cat-add-btn { border:1.5px dashed var(--border); color:var(--text3); }
+.cat-add-btn .icon { font-size:18px; }
 
 /* ===== Note Row ===== */
 .note-row { display:flex; gap:8px; padding:0 16px 12px; align-items:center; }
